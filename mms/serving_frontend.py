@@ -15,15 +15,40 @@ import ast
 import traceback
 import time
 import base64
+import os
+import re
 
 from functools import partial
-from flask import abort
+from flask import abort, jsonify, make_response, request
 from mms.service_manager import ServiceManager
 from mms.request_handler.flask_handler import FlaskRequestHandler
 from mms.log import get_logger
 from mms.metrics_manager import MetricsManager
+from functools import wraps
 
 logger = get_logger()
+
+
+def require_bearer_token(endpoint_function):
+    """
+    Decorator for bearer token authentication.
+    """
+    @wraps(endpoint_function)
+    def bearer_token_authorization(*args, **kwargs):
+        bearer_token = os.getenv('MMS_BEARER_TOKEN')
+        if bearer_token:
+            if 'Authorization' in request.headers:
+                token = re.sub(r'^(Token|Bearer)\s+','',request.headers['Authorization'])
+                if bearer_token == token:
+                    return endpoint_function(*args, **kwargs)
+                else:
+                    abort(make_response(jsonify(message='Invalid token'),401))
+            else:
+                abort(make_response(jsonify(message='Unauthorized'),401))
+        else:
+            return endpoint_function(*args, **kwargs)
+
+    return bearer_token_authorization
 
 
 class ServingFrontend(object):
@@ -214,6 +239,16 @@ class ServingFrontend(object):
             'schemes': ['http'],
             'paths': {},
         }
+
+        # 0. Check of use of bearer token
+        if os.getenv('MMS_BEARER_TOKEN'):
+            self.openapi_endpoints['securityDefinitions'] = {
+                'Bearer': {
+                    'type': 'apiKey',
+                    'name': 'Authorization',
+                    'in': 'header'
+                }
+            }
 
         # 1. Predict endpoints
         for model_name, modelservice in modelservices.items():
@@ -416,6 +451,7 @@ class ServingFrontend(object):
             MetricsManager.metrics['APIDescriptionTotal'].update(metric=1)
         return self.handler.jsonify({'description': self.openapi_endpoints})
 
+    @require_bearer_token
     def predict_callback(self, **kwargs):
         """
         Callback for predict endpoint
