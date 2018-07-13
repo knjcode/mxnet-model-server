@@ -1,0 +1,26 @@
+version: '2'
+
+services:
+  jirou_line:
+    build: .
+    container_name: jirou_line
+    restart: always
+    volumes:
+      - $PWD/model:/model
+      - $PWD/log:/var/log/nginx:rw
+    ports:
+      - "8081:8080"
+    environment:
+      - VIRTUAL_HOST=jirou-deep.knjcode.com
+      - VIRTUAL_NETWORK=nginx-proxy
+      - VIRTUAL_PORT=80
+      - LETSENCRYPT_HOST=jirou-deep.knjcode.com
+      - LETSENCRYPT_EMAIL=knjcode@gmail.com
+      - MMS_BEARER_TOKEN
+    networks:
+      - proxy-tier
+
+networks:
+  proxy-tier:
+    external:
+      name: nginx-proxy
